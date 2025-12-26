@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState } from "react";
+import { act, createContext, useContext, useReducer } from "react";
 
 const initialState = {
   fullName: "",
@@ -6,17 +6,37 @@ const initialState = {
   createdAt: "",
 };
 
+function reducer(state, action) {
+  switch (action.type) {
+    case "customer/createCustomer":
+      return {
+        ...state,
+        fullName: action.payload.fullName,
+        nationalId: action.payload.nationalId,
+        createdAt: action.payload.createdAt,
+      };
+    case "customer/updateName":
+      return { ...state, fullName: action.payload };
+    case "customer/createdAt":
+      return { ...state, createdAt: action.payload };
+    default:
+      throw new Error("Unknown action type");
+  }
+}
+
 const CustomerContext = createContext();
 
 export default function CustomerContextProvider({ children }) {
-  const [fullName, setFullName] = useState("");
-  const [nationalId, setNationalId] = useState("");
-  const [createdAt, setCreatedAt] = useState(() => new Date().toISOString());
+  const [{ fullName, nationalId, createdAt }, dispatch] = useReducer(
+    reducer,
+    initialState
+  );
 
   function createCustomer(fullName, nationalId) {
-    setFullName(fullName);
-    setNationalId(nationalId);
-    setCreatedAt(new Date().toISOString());
+    dispatch({
+      type: "customer/createCustomer",
+      payload: { fullName, nationalId, createdAt: new Date().toISOString() },
+    });
   }
 
   return (

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from "react";
+import { act, createContext, useContext, useReducer, useState } from "react";
 
 const initialState = {
   balance: 0,
@@ -8,49 +8,79 @@ const initialState = {
   error: "",
 };
 
+function reducer(state, action) {
+  switch (action.type) {
+    case "account/deposit":
+      return {
+        ...state,
+        balance: state.balance + action.payload,
+        isLoading: false,
+      };
+    case "account/withdraw":
+      if (action.payload > state.balance) return state;
+      return { ...state, balance: state.balance - action.payload };
+    case "account/requestLoan":
+      if (state.loanBalance || action.payload.loanBalance > state.balance)
+        return state;
+      return {
+        ...state,
+        loanBalance: action.payload.loanBalance,
+        loanPurpose: action.payload.loanPurpose,
+        balance: state.balance + action.payload.loanBalance,
+      };
+    case "account/payLoan":
+      return {
+        ...state,
+        balance: state.balance - state.loanBalance,
+        loanBalance: 0,
+        loanPurpose: "",
+      };
+    case "account/convertingCurrency":
+      return { ...state, isLoading: true };
+    case "account/error":
+      return { ...state, isLoading: false, error: action.payload };
+    default:
+      throw new Error("Unknown action type");
+  }
+}
+
 const AccountContext = createContext();
 
 export default function AccountContextProvider({ children }) {
-  const [balance, setBalance] = useState(0);
-  const [loanBalance, setLoanBalance] = useState(0);
-  const [loanPurpose, setLoanPurpose] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [{ balance, loanBalance, loanPurpose, isLoading }, dispatch] =
+    useReducer(reducer, initialState);
 
   async function deposit(amount, currency) {
     try {
-      if (currency === "USD") return setBalance((balance) => balance + amount);
+      if (currency === "USD")
+        return dispatch({ type: "account/deposit", payload: amount });
 
-      setIsLoading(true);
-
+      dispatch({ type: "account/convertingCurrency" });
       const res = await fetch(
         `https://api.frankfurter.dev/v1/latest?base=${currency}&symbols=USD`
       );
       const data = await res.json();
       const convertedAmount = amount * data.rates?.["USD"];
 
-      setBalance((balance) => balance + convertedAmount);
-      setIsLoading(false);
+      dispatch({ type: "account/deposit", payload: convertedAmount });
     } catch (err) {
-      setError(err.message ?? err);
-      setIsLoading(false);
+      dispatch({ type: "account/error", payload: err.message ?? err });
     }
   }
 
   function withdraw(amount) {
-    setBalance((balance) => balance - amount);
+    dispatch({ type: "account/withdraw", payload: amount });
   }
 
   function requestLoan(amount, purpose) {
-    setLoanBalance(amount);
-    setLoanPurpose(purpose);
-    setBalance((balance) => balance + amount);
+    dispatch({
+      type: "account/requestLoan",
+      payload: { loanBalance: amount, loanPurpose: purpose },
+    });
   }
 
   function payLoan() {
-    setBalance((balance) => balance - loanBalance);
-    setLoanBalance(0);
-    setLoanPurpose("");
+    dispatch({ type: "account/payLoan" });
   }
 
   return (
@@ -64,7 +94,6 @@ export default function AccountContextProvider({ children }) {
         requestLoan,
         payLoan,
         isLoading,
-        error,
       }}
     >
       {children}
